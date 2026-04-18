@@ -180,3 +180,35 @@ bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamByt
 
     return true; 
 }
+
+
+bool IndexadorHash::IndexarDirectorio(const string& dirAIndexar){
+    struct stat dir; 
+
+    //si stat devuelve -1 no existe el directorio
+    //compruebo si existe, entra en el bucle si no existe o no es directorio. 
+    if(stat(dirAIndexar.c_str(),&dir) == -1 || !S_ISDIR(dir.st_mode)){
+        cerr<< "ERROR: no exixte el directorio";
+        return false; 
+    }
+
+    //creo un fichero temporal oculto para guardar la lista de archivos 
+    string ficheroListaTmp = ".lista_fich_indexador";
+
+    //creo un comando de consola que ejecuto con system
+    // -type f hace que solo busquemos ficheros
+    // sort para hacerlo en orden alfabetico 
+    string cmd = "find " + dirAIndexar + " -type f | sort > " + ficheroListaTmp;
+    
+    // Ejecutamos el comando. Ahora tenemos un archivo de texto con la lista de documentos.
+    system(cmd.c_str()); //c_str para traducir a un array de caracteres de c original, para la consola. 
+
+    //llamo al metodo indexar con el fichero temporal para que lo gestione, 
+    bool estadoFinal = Indexar(ficheroListaTmp);
+
+    //borro el fichero temporal 
+    string cmdBorrar = "rm -f" + ficheroListaTmp;
+    system(cmdBorrar.c_str());
+    return estadoFinal; 
+
+}
