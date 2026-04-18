@@ -181,7 +181,6 @@ bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamByt
     return true; 
 }
 
-
 bool IndexadorHash::IndexarDirectorio(const string& dirAIndexar){
     struct stat dir; 
 
@@ -212,3 +211,69 @@ bool IndexadorHash::IndexarDirectorio(const string& dirAIndexar){
     return estadoFinal; 
 
 }
+
+bool IndexadorHash::IndexarPregunta(const string& preg){
+    //vacio pregunta anterior
+    pregunta = ""; 
+    indicePregunta.clear(); 
+    infPregunta.Vaciar(); 
+
+    //cadena vacia = nada que indexar
+    if(preg.empty()){
+        cerr<<"ERROR: pregunta vacia";
+        return false; 
+    }
+
+    //vars de la pregunta
+
+    int numPal = 0 ; 
+    int numPalSinParada = 0 ; 
+    int posicionActual = 0 ; 
+    unordered_set<string> terminosUnicosPregunta; 
+    list<string> tokensPregunta; 
+    stemmerPorter miStemmer; 
+
+    //tokenizo la pregunta completa 
+    tok.Tokenizar(preg,tokensPregunta);
+
+    //proceso tokens
+    for(list<string>::const_iterator it = tokensPregunta.begin();it != tokensPregunta; it++){
+        string termino = *it; 
+        numPal; 
+
+        //aplico el stemmer si toca
+        string terminoProcesado =termino; 
+        if(tipoStemmer == 1){
+            miStemmer.stemmer(terminoProcesado,1);
+        }else if(tipoStemmer == 2){
+            miStemmer.stemmer(terminoProcesado,2);
+        }
+
+        //palabra parada? 
+        if(stopWords.find(terminoProcesado) != stopWords.end()){
+            posicionActual++; 
+            continue; 
+        }
+    
+        //palabra valida
+        numPalSinParada++; 
+        terminosUnicosPregunta.insert(terminoProcesado);
+
+        // Añadir ocurrencia en el índice exclusivo de la pregunta
+        indicePregunta[terminoProcesado].AnadirOcurrencia(posicionActual, almacenarPosTerm);
+        posicionActual++;
+    }
+
+    //si la pregunta no tiene ningun termino eran todo stopwords
+    if(numPalSinParada == 0 ){
+        cerr << "ERROR: La pregunta no contiene terminos validos";
+        return false;
+    }
+
+    //guardo toda la informacion 
+    pregunta = preg; 
+    infPregunta.Inicializar(numPal,numPalSinParada,terminosUnicosPregunta.size());
+    return true; 
+}
+
+
