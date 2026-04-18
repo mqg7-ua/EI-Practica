@@ -276,4 +276,61 @@ bool IndexadorHash::IndexarPregunta(const string& preg){
     return true; 
 }
 
+//devuelve la pregunta en preg
+bool IndexadorHash::DevuelvePregunta(string& preg) const {
+    // Si hay una pregunta indexada (infPregunta no está vacía)
+    if (infPregunta.ObtenerNumTotalPalSinParada() > 0) {
+        preg = pregunta;
+        return true;
+    }
+    return false;
+}
 
+//a partir de una palabra te devuelve la informacion de esta en la pregunta
+bool IndexadorHash::DevuelvePregunta(const string& word, InformacionTerminoPregunta& inf) const {
+    
+    // aplicamos a la palabra tokenizado
+    list<string> tokensBusqueda;
+    tok.Tokenizar(word, tokensBusqueda);
+    
+    // Si al tokenizar la palabra desaparece entonces no existe
+    if (tokensBusqueda.empty()) {
+        inf = InformacionTerminoPregunta();
+        return false;
+    }
+    
+    // Nos quedamos con la palabra procesada
+    string terminoProcesado = tokensBusqueda.front(); 
+
+    //aplico el steamming 
+    stemmerPorter miStemmer;
+    if (tipoStemmer == 1) {
+        miStemmer.stemmer(terminoProcesado, 1);
+    } else if (tipoStemmer == 2) {
+        miStemmer.stemmer(terminoProcesado, 2);
+    }
+
+    // busco el termino en el indice de la pregunta
+    unordered_map<string, InformacionTerminoPregunta>::const_iterator it = indicePregunta.find(terminoProcesado);
+    
+    //si esta, guardamos la informacion en inf 
+    if (it != indicePregunta.end()) {
+        inf = it->second;
+        return true;
+    }
+    
+    // Si no está, devolvemos inf vacío
+    inf = InformacionTerminoPregunta(); 
+    return false;
+}
+
+//en inf queda la informacion de la pregunta 
+bool IndexadorHash::DevuelvePregunta(InformacionPregunta& inf) const {
+    if (infPregunta.ObtenerNumTotalPalSinParada() > 0) {
+        inf = infPregunta;
+        return true;
+    }
+    
+    inf = InformacionPregunta();
+    return false;
+}
