@@ -1,51 +1,182 @@
-#ifndef INDEXADOR_HASH_H
-#define INDEXADOR_HASH_H
+#include "../include/indexadorHash.h"
+using namespace std; 
 
-#include "indexadorInformacion.h"
-#include "tokenizador.h" // Se asume que está en el mismo directorio o path de inclusión
-#include <unordered_set>
+  //////////////////////////////////////////////////////
+ //     CONSTRUCTORES, DESTRUCTORES Y OPERADORES     //
+//////////////////////////////////////////////////////
 
-class IndexadorHash {
-    friend std::ostream& operator<<(std::ostream& s, const IndexadorHash& p);
+IndexadorHash::IndexadorHash(){
+    ficheroStopWords = ""; 
+    directorioIndice = ""; 
+    //Por defecto no hay stemmer
+    tipoStemmer = 0; 
+    almacenarPosTerm = false; 
+    pregunta = "";
+}
 
-public:
-    // Constructor principal [cite: 226]
-    IndexadorHash(const std::string& fichStopWords, const std::string& delimitadores,
-                  const bool& detectComp, const bool& minuscSinAcentos, 
-                  const std::string& dirIndice, const int& tStemmer, const bool& almPosTerm);
+IndexadorHash::IndexadorHash(const string& fichStopWords,const string& delimitadores,const bool&   detectComp,                  const bool&   minuscSinAcentos, const string& dirIndice, const int& tStemmer, const bool& almPosTerm){
+    //Tokenizador
+    tok = Tokenizador(delimitadores,detectComp,minuscSinAcentos); 
 
-    // Carga de índice previo [cite: 238]
-    IndexadorHash(const std::string& directorioIndexacion);
+    ficheroStopWords = fichStopWords; 
+    directorioIndice = dirIndice; 
+    tipoStemmer = tStemmer; 
+    almacenarPosTerm = almPosTerm; 
+    pregunta = "";
 
-    // Métodos de indexación [cite: 246, 253]
-    bool Indexar(const std::string& ficheroDocumentos);
-    bool IndexarDirectorio(const std::string& dirAIndexar);
+}
 
-    // Persistencia [cite: 264, 272]
-    bool GuardarIndexacion() const;
-    bool RecuperarIndexacion(const std::string& directorioIndexacion);
+IndexadorHash::~IndexadorHash() {
+    indice.clear();
+    indiceDocs.clear();
+    informacionColeccionDocs.Vaciar();
+    pregunta = "";
+    indicePregunta.clear();
+    infPregunta.Vaciar();
+    stopWords.clear();
+}
+bool IndexadorHash::Indexar(const string& ficheroDocumentos){
+    ifstream listaFicheros(ficheroDocumentos.c_str());
+    if(!listaFicheros){
+        cerr << "ERROR: no se ha podido abrir lista documentos";
+        return false; 
+    }
+    bool estadoFinal = false; 
+    string nomDoc; 
 
-    // Preguntas [cite: 282]
-    bool IndexarPregunta(const std::string& preg);
+    //Leo linea a linea cada nombre de los documentos. 
+    while(getline(listaFicheros,nomDoc)){
+        //si la linea esta vacia la salto
+        if(nomDoc.empty()){
+            continue; 
+        }
 
-    // Otros métodos obligatorios (Getters, Listar, Borrar) [cite: 317-357]
-    bool BorraDoc(const std::string& nomDoc);
-    void VaciarIndiceDocs();
-    int NumPalIndexadas() const;
+        // Comprobacion reindexacion
 
-private:
-    std::unordered_map<std::string, InformacionTermino> indice; // Términos -> Info [cite: 364]
-    std::unordered_map<std::string, InfDoc> indiceDocs; // Nombredoc -> Info [cite: 366]
-    InfColeccionDocs informacionColeccionDocs; // Stats globales [cite: 368]
-    
-    std::string pregunta; // Pregunta actual [cite: 374]
-    std::unordered_map<std::string, InformacionTerminoPregunta> indicePregunta; // [cite: 376]
-    InformacionPregunta infPregunta;
+        //Declaro la estructura en la que almaceno el archivo. 
+        struct stat infoArchivo; 
 
-    std::unordered_set<std::string> stopWords; // Palabras de parada [cite: 379]
-    Tokenizador tok; // Clase de la Práctica 1 [cite: 385]
-    int tipoStemmer; // 0=no, 1=español, 2=inglés [cite: 390]
-    bool almacenarPosTerm; // [cite: 401]
-};
+        //Si el archivo no existe emito error y siguiente
+        if(stat(nomDoc.c_str(), &infoArchivo) != 0){ // si es true es que ahora nomdoc se aloja en infoArchivo. Lo usamos para mirar los metadatos del archivo 
+            cerr <<"ERROR: no se ha podido acceder al documento a indexar"; 
+            continue; 
+        }
 
-#endif
+        //si se ha asignado bien los metadatos, en st_mtime tienes la fecha del documento. 
+        Fecha fechaActual(infoArchivo.st_mtime);
+        int idDocAUsar = -1; 
+
+        //Miro si ya existe el indice 
+        unordered_map<string,InfDoc>::iterator it = indiceDocs.find(nomDoc);
+
+        //Si no encuentra el archivo el it apunta al final de indiceDocs
+        //Si ya hemos procesado el archivo antes, entonces entramos en le if para dejar el mas reciente. 
+        if(it != indiceDocs.end()){
+            //Obtengo la fecha 
+            Fecha fechaGuardada = it->second.ObtenerFecha();
+
+            //Comparamos cual es el mas reciente
+            if(fechaActual.esMasReciente(fechaGuardada)){
+                idDocAUsar = it->second.ObtenerIdDoc(); 
+                BorraDoc(nomDoc); //Borro los datos del documento viejo. 
+            }else{
+                //Si no es mas reciente, lo ignoramos
+                continue; 
+            }
+        }else{
+            //El archivo es nuevo, por lo que hay que asignarle un id
+            idDocAUsar = SiguienteIdDoc(); 
+        }
+        
+        //funcion auxiliar
+        if(!IndexarDocumento(nomDoc,idDocAUsar,infoArchivo.st_size,fechaActual)){
+            listaFicheros.close();
+            //si diese algun fallo devuelvo false.
+            estadoFinal = false; 
+            break; 
+        }
+    }
+
+    listaFicheros.close(); 
+    return estadoFinal; 
+}
+
+bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamBytes, const Fecha& fecha){
+
+    ifstream fichero(nomDoc.c_str()); 
+    if(!fichero){
+        cerr << "ERROR: no se puede abrir el documento";
+    }
+
+    //Variables de este documento
+    int numPal = 0; 
+    int numPalSinParada = 0; 
+    int posicionActual = 0; 
+
+    //declaro un conjunto para contar las palabras diferentes (sin stopwords) tiene el documento. 
+    unordered_set<string> terminosUnicosDoc; 
+
+    string linea; 
+    list<string> tokensLinea; 
+    stemmerPorter miStemmer; //el stemmer a usar. 
+
+    //Leemos el documento linea a linea
+    while(getline(fichero,linea)){
+        if(linea.empty()){continue;}
+
+        //Tokenizo cada linea con el tokenizador
+        tok.Tokenizar(linea,tokensLinea);
+
+        //recorro cada palabra de la linea
+        for(list<string>::const_iterator it = tokensLinea.begin(); it != tokensLinea.end() ; ++it){
+            string termino = *it; 
+            numPal++; //anado uno al total de palabras
+
+            //si el stemmer esta activo lo aplico 
+            string terminoProcesado = termino; 
+            if(tipoStemmer == 1){
+                miStemmer.stemmer(terminoProcesado,1); //espanol
+            }else if(tipoStemmer ==2){
+                miStemmer.stemmer(terminoProcesado,2);//ingles
+            }
+
+            //es una palabra de parada? 
+            if(stopWords.find(terminoProcesado) != stopWords.end()){
+                //SI es palabra de parada, la ignoramos pero la posicion avanza
+                posicionActual++; 
+                continue; 
+            }
+
+            //palabra valida
+            numPalSinParada++; 
+            terminosUnicosDoc.insert(terminoProcesado);
+
+            //miro si el termino es nuevo o existe
+            bool esTerminoNuevo = !Existe(terminoProcesado);
+
+            //aqui accedo al unordered_map, si el objeto no existe lo crea, si existe lo devuelve
+            //con anadirocurrencia anado el nuevo termino. 
+            indice[terminoProcesado].AnadirOcurrenciaDoc(idDoc,posicionActual,almacenarPosTerm);
+
+            //si es nuevo sumamos 1 al contador de palabras unicas. 
+            if(esTerminoNuevo){
+                informacionColeccionDocs.AjustarPalDiferentes(1);
+            }
+
+            //avanza la posicion actual
+            posicionActual++;
+        }
+    }
+
+    fichero.close(); 
+
+    //guardamos la informacion del documento en indiceDocs
+    InfDoc infoDelDocumento; 
+    infoDelDocumento.Inicializar(idDoc,numPal,numPalSinParada,terminosUnicosDoc.size(),tamBytes,fecha);
+    indiceDocs[nomDoc] = infoDelDocumento; 
+
+    //actualizo los contadores globales a la coleccion 
+    informacionColeccionDocs.AnadirDoc(infoDelDocumento);
+
+    return true; 
+}

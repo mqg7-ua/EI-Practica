@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include "indexadorInformacion.h"
 #include "tokenizador.h"
+#include "stemmer.h"
 
 using namespace std;
 
@@ -70,10 +71,10 @@ public:
 
     // ── Listados de diagnostico ─────────────────────────────────────────────
     void ImprimirIndexacion() const {
-        cout << "Terminos indexados:" << endl;
+        cout << "Terminos indexados: " << endl;
         for (auto& par : indice)
             cout << par.first << '\t' << par.second << endl;
-        cout << "Documentos indexados:" << endl;
+        cout << "Documentos indexados: " << endl;
         for (auto& par : indiceDocs)
             cout << par.first << '\t' << par.second << endl;
     }
@@ -94,7 +95,7 @@ public:
 
     void ImprimirIndexacionPregunta() {
         cout << "Pregunta indexada: " << pregunta << endl;
-        cout << "Terminos indexados en la pregunta:" << endl;
+        cout << "Terminos indexados en la pregunta: " << endl;
         for (auto& par : indicePregunta)
             cout << par.first << '\t' << par.second << endl;
         cout << "Informacion de la pregunta: " << infPregunta << endl;
