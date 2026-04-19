@@ -2,7 +2,7 @@
 #include <string>
 #include <list>
 #include <sys/resource.h>
-#include “indexadorHash.h”
+#include "../include/indexadorHash.h"
 
 using namespace std;
 

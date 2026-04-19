@@ -36,6 +36,7 @@ struct Fecha {
 // ============================================================
 class InfTermDoc {
     friend ostream& operator<<(ostream& s, const InfTermDoc& p);
+    friend class IndexadorHash;
 public:
     InfTermDoc();
     InfTermDoc(const InfTermDoc&);
@@ -61,6 +62,7 @@ private:
 // ============================================================
 class InformacionTermino {
     friend ostream& operator<<(ostream& s, const InformacionTermino& p);
+    friend class IndexadorHash;
 public:
     InformacionTermino();
     InformacionTermino(const InformacionTermino&);
@@ -90,6 +92,7 @@ private:
 // ============================================================
 class InfDoc {
     friend ostream& operator<<(ostream& s, const InfDoc& p);
+    friend class IndexadorHash;
 public:
     InfDoc();
     InfDoc(const InfDoc&);
@@ -121,6 +124,7 @@ private:
 // ============================================================
 class InfColeccionDocs {
     friend ostream& operator<<(ostream& s, const InfColeccionDocs& p);
+    friend class IndexadorHash;
 public:
     InfColeccionDocs();
     InfColeccionDocs(const InfColeccionDocs&);
@@ -152,6 +156,7 @@ private:
 // ============================================================
 class InformacionTerminoPregunta {
     friend ostream& operator<<(ostream& s, const InformacionTerminoPregunta& p);
+    friend class IndexadorHash;
 public:
     InformacionTerminoPregunta();
     InformacionTerminoPregunta(const InformacionTerminoPregunta&);
@@ -174,6 +179,7 @@ private:
 // ============================================================
 class InformacionPregunta {
     friend ostream& operator<<(ostream& s, const InformacionPregunta& p);
+    friend class IndexadorHash; //Para no tener que hacer tantos getters y setters
 public:
     InformacionPregunta();
     InformacionPregunta(const InformacionPregunta&);

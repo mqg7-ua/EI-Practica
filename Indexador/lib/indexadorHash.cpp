@@ -1,5 +1,6 @@
 #include "../include/indexadorHash.h"
 using namespace std; 
+#include <sys/stat.h>  // Necesario para la función mkdir() en Linux
 
   //////////////////////////////////////////////////////
  //     CONSTRUCTORES, DESTRUCTORES Y OPERADORES     //
@@ -23,7 +24,53 @@ IndexadorHash::IndexadorHash(const string& fichStopWords,const string& delimitad
     tipoStemmer = tStemmer; 
     almacenarPosTerm = almPosTerm; 
     pregunta = "";
+    CargarStopWords(ficheroStopWords);
+}
 
+IndexadorHash::IndexadorHash(const string& directorioIndexacion) {
+    ficheroStopWords = "";
+    directorioIndice = directorioIndexacion;
+    tipoStemmer = 0;
+    almacenarPosTerm = false;
+    pregunta = "";
+
+    // delego toda la carga a RecuperarIndexacion
+    if (!RecuperarIndexacion(directorioIndexacion)) {
+        cerr << "ERROR: No se ha podido recuperar la indexacion del directorio: " << directorioIndexacion << endl;
+    }
+}
+
+IndexadorHash::IndexadorHash(const IndexadorHash& o) {
+    indice = o.indice;
+    indiceDocs = o.indiceDocs;
+    informacionColeccionDocs = o.informacionColeccionDocs;
+    pregunta = o.pregunta;
+    indicePregunta = o.indicePregunta;
+    infPregunta = o.infPregunta;
+    stopWords = o.stopWords;
+    ficheroStopWords = o.ficheroStopWords;
+    tok = o.tok;
+    directorioIndice = o.directorioIndice;
+    tipoStemmer = o.tipoStemmer;
+    almacenarPosTerm = o.almacenarPosTerm;
+}
+
+IndexadorHash& IndexadorHash::operator=(const IndexadorHash& o) {
+    if (this != &o) {
+        indice = o.indice;
+        indiceDocs = o.indiceDocs;
+        informacionColeccionDocs = o.informacionColeccionDocs;
+        pregunta = o.pregunta;
+        indicePregunta = o.indicePregunta;
+        infPregunta = o.infPregunta;
+        stopWords = o.stopWords;
+        ficheroStopWords = o.ficheroStopWords;
+        tok = o.tok;
+        directorioIndice = o.directorioIndice;
+        tipoStemmer = o.tipoStemmer;
+        almacenarPosTerm = o.almacenarPosTerm;
+    }
+    return *this;
 }
 
 IndexadorHash::~IndexadorHash() {
@@ -35,13 +82,14 @@ IndexadorHash::~IndexadorHash() {
     infPregunta.Vaciar();
     stopWords.clear();
 }
+
 bool IndexadorHash::Indexar(const string& ficheroDocumentos){
     ifstream listaFicheros(ficheroDocumentos.c_str());
     if(!listaFicheros){
-        cerr << "ERROR: no se ha podido abrir lista documentos";
+        cerr << "ERROR: no se ha podido abrir lista documentos" << endl;
         return false; 
     }
-    bool estadoFinal = false; 
+    bool estadoFinal = true; 
     string nomDoc; 
 
     //Leo linea a linea cada nombre de los documentos. 
@@ -58,7 +106,7 @@ bool IndexadorHash::Indexar(const string& ficheroDocumentos){
 
         //Si el archivo no existe emito error y siguiente
         if(stat(nomDoc.c_str(), &infoArchivo) != 0){ // si es true es que ahora nomdoc se aloja en infoArchivo. Lo usamos para mirar los metadatos del archivo 
-            cerr <<"ERROR: no se ha podido acceder al documento a indexar"; 
+            cerr <<"ERROR: no se ha podido acceder al documento a indexar" << endl; 
             continue; 
         }
 
@@ -105,7 +153,7 @@ bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamByt
 
     ifstream fichero(nomDoc.c_str()); 
     if(!fichero){
-        cerr << "ERROR: no se puede abrir el documento";
+        cerr << "ERROR: no se puede abrir el documento" << endl;
     }
 
     //Variables de este documento
@@ -132,19 +180,19 @@ bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamByt
             string termino = *it; 
             numPal++; //anado uno al total de palabras
 
+             //es una palabra de parada? 
+            if(stopWords.find(termino) != stopWords.end()){
+                //SI es palabra de parada, la ignoramos pero la posicion avanza
+                posicionActual++; 
+                continue; 
+            }
+
             //si el stemmer esta activo lo aplico 
             string terminoProcesado = termino; 
             if(tipoStemmer == 1){
                 miStemmer.stemmer(terminoProcesado,1); //espanol
             }else if(tipoStemmer ==2){
                 miStemmer.stemmer(terminoProcesado,2);//ingles
-            }
-
-            //es una palabra de parada? 
-            if(stopWords.find(terminoProcesado) != stopWords.end()){
-                //SI es palabra de parada, la ignoramos pero la posicion avanza
-                posicionActual++; 
-                continue; 
             }
 
             //palabra valida
@@ -156,8 +204,17 @@ bool IndexadorHash::IndexarDocumento(const string& nomDoc,int idDoc, long tamByt
 
             //aqui accedo al unordered_map, si el objeto no existe lo crea, si existe lo devuelve
             //con anadirocurrencia anado el nuevo termino. 
-            indice[terminoProcesado].AnadirOcurrenciaDoc(idDoc,posicionActual,almacenarPosTerm);
-
+            try {
+                 // Intentamos insertar/modificar en el unordered_map
+                indice[terminoProcesado].AnadirOcurrenciaDoc(idDoc, posicionActual, almacenarPosTerm);
+            } 
+            catch (const std::bad_alloc& e) {
+                 // Capturamos la falta de memoria
+                cerr << "ERROR: Falta de memoria indexando el documento " << nomDoc 
+                     << " en el termino " << terminoProcesado << endl;
+                fichero.close();
+                return false; 
+            }
             //si es nuevo sumamos 1 al contador de palabras unicas. 
             if(esTerminoNuevo){
                 informacionColeccionDocs.AjustarPalDiferentes(1);
@@ -187,7 +244,7 @@ bool IndexadorHash::IndexarDirectorio(const string& dirAIndexar){
     //si stat devuelve -1 no existe el directorio
     //compruebo si existe, entra en el bucle si no existe o no es directorio. 
     if(stat(dirAIndexar.c_str(),&dir) == -1 || !S_ISDIR(dir.st_mode)){
-        cerr<< "ERROR: no exixte el directorio";
+        cerr<< "ERROR: no existe el directorio" << endl;
         return false; 
     }
 
@@ -206,7 +263,7 @@ bool IndexadorHash::IndexarDirectorio(const string& dirAIndexar){
     bool estadoFinal = Indexar(ficheroListaTmp);
 
     //borro el fichero temporal 
-    string cmdBorrar = "rm -f" + ficheroListaTmp;
+    string cmdBorrar = "rm -f " + ficheroListaTmp;
     system(cmdBorrar.c_str());
     return estadoFinal; 
 
@@ -220,7 +277,7 @@ bool IndexadorHash::IndexarPregunta(const string& preg){
 
     //cadena vacia = nada que indexar
     if(preg.empty()){
-        cerr<<"ERROR: pregunta vacia";
+        cerr<<"ERROR: pregunta vacia" << endl;
         return false; 
     }
 
@@ -237,9 +294,15 @@ bool IndexadorHash::IndexarPregunta(const string& preg){
     tok.Tokenizar(preg,tokensPregunta);
 
     //proceso tokens
-    for(list<string>::const_iterator it = tokensPregunta.begin();it != tokensPregunta; it++){
+    for(list<string>::const_iterator it = tokensPregunta.begin(); it != tokensPregunta.end(); it++){
         string termino = *it; 
-        numPal; 
+        numPal++; 
+
+        //palabra parada? 
+        if(stopWords.find(termino) != stopWords.end()){
+            posicionActual++; 
+            continue; 
+        }
 
         //aplico el stemmer si toca
         string terminoProcesado =termino; 
@@ -247,12 +310,6 @@ bool IndexadorHash::IndexarPregunta(const string& preg){
             miStemmer.stemmer(terminoProcesado,1);
         }else if(tipoStemmer == 2){
             miStemmer.stemmer(terminoProcesado,2);
-        }
-
-        //palabra parada? 
-        if(stopWords.find(terminoProcesado) != stopWords.end()){
-            posicionActual++; 
-            continue; 
         }
     
         //palabra valida
@@ -266,7 +323,7 @@ bool IndexadorHash::IndexarPregunta(const string& preg){
 
     //si la pregunta no tiene ningun termino eran todo stopwords
     if(numPalSinParada == 0 ){
-        cerr << "ERROR: La pregunta no contiene terminos validos";
+        cerr << "ERROR: La pregunta no contiene terminos validos" << endl;
         return false;
     }
 
@@ -333,4 +390,488 @@ bool IndexadorHash::DevuelvePregunta(InformacionPregunta& inf) const {
     
     inf = InformacionPregunta();
     return false;
+}
+
+  //////////////////////////////////////////////////////
+ //          MÉTODOS AUXILIARES PRIVADOS             //
+//////////////////////////////////////////////////////
+
+void IndexadorHash::CargarStopWords(const string& fichero) {
+    ifstream fichStop(fichero.c_str());
+    if (!fichStop) {
+        cerr << "ERROR: no se ha podido abrir fichero stopwords" << endl;
+        return; 
+    }
+    string linea;
+    stemmerPorter miStemmer; 
+    list<string> tokensStop;
+
+    while (getline(fichStop, linea)) {
+        if (linea.empty()) continue;
+        tokensStop.clear();
+        tok.Tokenizar(linea, tokensStop);
+        for (list<string>::iterator it = tokensStop.begin(); it != tokensStop.end(); ++it) {
+            stopWords.insert(*it);
+        }
+    }
+    fichStop.close();
+}
+
+string IndexadorHash::TransformarTerm(const string& word) const {
+    list<string> tokensBusqueda;
+    tok.Tokenizar(word, tokensBusqueda);
+    if (tokensBusqueda.empty()) return "";
+    
+    string terminoProcesado = tokensBusqueda.front(); 
+    stemmerPorter miStemmer;
+    if (tipoStemmer == 1) miStemmer.stemmer(terminoProcesado, 1);
+    else if (tipoStemmer == 2) miStemmer.stemmer(terminoProcesado, 2);
+    
+    return terminoProcesado;
+}
+
+int IndexadorHash::SiguienteIdDoc() const {
+    int maxId = 0;
+    for (unordered_map<string, InfDoc>::const_iterator it = indiceDocs.begin(); it != indiceDocs.end(); ++it) {
+        if (it->second.idDoc > maxId) {
+            maxId = it->second.idDoc;
+        }
+    }
+    return maxId + 1; // El primer idDoc será 1 si el mapa está vacío
+}
+
+
+  //////////////////////////////////////////////////////
+ //           MÉTODOS DE BORRADO Y VACIADO           //
+//////////////////////////////////////////////////////
+
+bool IndexadorHash::BorraDoc(const string& nomDoc) {
+    unordered_map<string, InfDoc>::iterator itDoc = indiceDocs.find(nomDoc);
+    if (itDoc == indiceDocs.end()) return false; 
+
+    int idDocABorrar = itDoc->second.idDoc;
+    informacionColeccionDocs.EliminarDoc(itDoc->second);
+
+    unordered_map<string, InformacionTermino>::iterator itTermino = indice.begin();
+    while (itTermino != indice.end()) {
+        unordered_map<int, InfTermDoc>::iterator itAparicion = itTermino->second.l_docs.find(idDocABorrar);
+        if (itAparicion != itTermino->second.l_docs.end()) {
+            itTermino->second.ftc -= itAparicion->second.ft;
+            itTermino->second.l_docs.erase(itAparicion);
+        }
+        if (itTermino->second.l_docs.empty()) {
+            itTermino = indice.erase(itTermino);
+            informacionColeccionDocs.AjustarPalDiferentes(-1);
+        } else {
+            ++itTermino;
+        }
+    }
+    indiceDocs.erase(itDoc);
+    return true; 
+}
+
+void IndexadorHash::VaciarIndiceDocs() {
+    indice.clear();
+    indiceDocs.clear();
+    informacionColeccionDocs.Vaciar();
+}
+
+void IndexadorHash::VaciarIndicePreg() {
+    pregunta = "";
+    indicePregunta.clear();
+    infPregunta.Vaciar();
+}
+
+
+  //////////////////////////////////////////////////////
+ //              MÉTODOS DE CONSULTA                 //
+//////////////////////////////////////////////////////
+
+bool IndexadorHash::Existe(const string& word) const {
+    string term = TransformarTerm(word);
+    if(term.empty()) return false;
+    return (indice.find(term) != indice.end());
+}
+
+bool IndexadorHash::Devuelve(const string& word, InformacionTermino& inf) const {
+    string term = TransformarTerm(word);
+    if(term.empty()) return false;
+
+    unordered_map<string, InformacionTermino>::const_iterator it = indice.find(term);
+    if (it != indice.end()) {
+        inf = it->second;
+        return true;
+    }
+    inf = InformacionTermino(); 
+    return false;
+}
+
+bool IndexadorHash::Devuelve(const string& word, const string& nomDoc, InfTermDoc& infDoc) const {
+    string term = TransformarTerm(word);
+    if(term.empty()) return false;
+
+    unordered_map<string, InfDoc>::const_iterator itDoc = indiceDocs.find(nomDoc);
+    if (itDoc == indiceDocs.end()) {
+        infDoc = InfTermDoc();
+        return false;
+    }
+
+    unordered_map<string, InformacionTermino>::const_iterator itTerm = indice.find(term);
+    if (itTerm != indice.end()) {
+        unordered_map<int, InfTermDoc>::const_iterator itAparicion = itTerm->second.l_docs.find(itDoc->second.idDoc);
+        if (itAparicion != itTerm->second.l_docs.end()) {
+            infDoc = itAparicion->second;
+            return true;
+        }
+    }
+    infDoc = InfTermDoc();
+    return false;
+}
+
+
+  //////////////////////////////////////////////////////
+ //           GETTERS Y MÉTODOS SIMPLES              //
+//////////////////////////////////////////////////////
+
+int IndexadorHash::NumPalIndexadas() const {
+    return indice.size();
+}
+
+string IndexadorHash::DevolverFichPalParada() const {
+    return ficheroStopWords;
+}
+
+void IndexadorHash::ListarPalParada() const {
+    for (unordered_set<string>::const_iterator it = stopWords.begin(); it != stopWords.end(); ++it) {
+        cout << *it << endl;
+    }
+}
+
+int IndexadorHash::NumPalParada() const {
+    return stopWords.size();
+}
+
+string IndexadorHash::DevolverDelimitadores() const {
+    return tok.DelimitadoresPalabra();
+}
+
+bool IndexadorHash::DevolverCasosEspeciales() const {
+    // const_cast es para no modificar el codigo del tokenizador y quitarle el const al metodo. 
+    return const_cast<Tokenizador&>(tok).CasosEspeciales();
+}
+
+bool IndexadorHash::DevolverPasarAminuscSinAcentos() const {
+    return const_cast<Tokenizador&>(tok).PasarAminuscSinAcentos();
+}
+
+bool IndexadorHash::DevolverAlmacenarPosTerm() const {
+    return almacenarPosTerm;
+}
+
+string IndexadorHash::DevolverDirIndice() const {
+    return directorioIndice;
+}
+
+int IndexadorHash::DevolverTipoStemming() const {
+    return tipoStemmer;
+}
+
+void IndexadorHash::ListarInfColeccDocs() const {
+    cout << informacionColeccionDocs << endl;
+}
+
+void IndexadorHash::ListarTerminos() const {
+    for (unordered_map<string, InformacionTermino>::const_iterator it = indice.begin(); it != indice.end(); ++it) {
+        cout << it->first << '\t' << it->second << endl;
+    }
+}
+
+bool IndexadorHash::ListarTerminos(const string& nomDoc) const {
+    unordered_map<string, InfDoc>::const_iterator itDoc = indiceDocs.find(nomDoc);
+    if (itDoc == indiceDocs.end()) return false;
+
+    int idDelDoc = itDoc->second.idDoc;
+    for (unordered_map<string, InformacionTermino>::const_iterator it = indice.begin(); it != indice.end(); ++it) {
+        if (it->second.l_docs.find(idDelDoc) != it->second.l_docs.end()) {
+            cout << it->first << '\t' << it->second << endl;
+        }
+    }
+    return true;
+}
+
+void IndexadorHash::ListarDocs() const {
+    for (unordered_map<string, InfDoc>::const_iterator it = indiceDocs.begin(); it != indiceDocs.end(); ++it) {
+        cout << it->first << '\t' << it->second << endl;
+    }
+}
+
+bool IndexadorHash::ListarDocs(const string& nomDoc) const {
+    unordered_map<string, InfDoc>::const_iterator it = indiceDocs.find(nomDoc);
+    if (it != indiceDocs.end()) {
+        cout << it->first << '\t' << it->second << endl;
+        return true;
+    }
+    return false;
+}
+
+
+  //////////////////////////////////////////////////////
+ //             PERSISTENCIA (GUARDAR/CARGAR)        //
+//////////////////////////////////////////////////////
+
+bool IndexadorHash::GuardarIndexacion() const {
+    if (directorioIndice.empty()) {
+        cerr << "ERROR: Directorio de indice vacio" << endl;
+        return false;
+    }
+
+    // Crea el directorio (0755 son permisos estandar de Linux)
+    mkdir(directorioIndice.c_str(), 0755);
+
+    // 1. GUARDAR CONFIGURACIÓN
+    string rutaConfig = directorioIndice + "/config.txt";
+    ofstream fConfig(rutaConfig.c_str());
+    if (!fConfig) {
+        cerr << "ERROR: No se pudo crear el archivo de configuracion" << endl;
+        return false;
+    }
+    
+    fConfig << ficheroStopWords << '\n' 
+            << tipoStemmer << '\n' 
+            << almacenarPosTerm << '\n'
+            << tok.DelimitadoresPalabra() << '\n' 
+            << const_cast<Tokenizador&>(tok).CasosEspeciales() << '\n' 
+            << const_cast<Tokenizador&>(tok).PasarAminuscSinAcentos() << '\n';
+    fConfig.close();
+
+    // 2. GUARDAR COLECCIÓN DOCS
+    string rutaColeccion = directorioIndice + "/coleccion.txt";
+    ofstream fCol(rutaColeccion.c_str());
+    if (!fCol) {
+        cerr << "ERROR: No se pudo crear el archivo de coleccion" << endl;
+        return false;
+    }
+    fCol << informacionColeccionDocs.numDocs << " " 
+         << informacionColeccionDocs.numTotalPal << " "
+         << informacionColeccionDocs.numTotalPalSinParada << " " 
+         << informacionColeccionDocs.numTotalPalDiferentes << " "
+         << informacionColeccionDocs.tamBytes << '\n';
+    fCol.close();
+
+    // 3. GUARDAR ÍNDICE DE DOCUMENTOS (indiceDocs)
+    string rutaDocs = directorioIndice + "/indiceDocs.txt";
+    ofstream fDocs(rutaDocs.c_str());
+    if (!fDocs) {
+        cerr << "ERROR: No se pudo crear el archivo de documentos" << endl;
+        return false;
+    }
+    fDocs << indiceDocs.size() << '\n';
+    for (unordered_map<string, InfDoc>::const_iterator it = indiceDocs.begin(); it != indiceDocs.end(); ++it) {
+        // En una linea el nombre del doc, en la siguiente sus datos.
+        // NOTA SOBRE LA FECHA: Asumimos que tu clase 'Fecha' puede guardarse. Si no, guarda sus datos primarios.
+        fDocs << it->first << '\n' 
+              << it->second.idDoc << " " 
+              << it->second.numPal << " " 
+              << it->second.numPalSinParada << " " 
+              << it->second.numPalDiferentes << " " 
+              << it->second.tamBytes << '\n'
+              << it->second.fechaModificacion.tiempo <<'\n';
+    }
+    fDocs.close();
+
+    // 4. GUARDAR ÍNDICE PRINCIPAL (indice)
+    string rutaIndice = directorioIndice + "/indice.txt";
+    ofstream fInd(rutaIndice.c_str());
+    if (!fInd) {
+        cerr << "ERROR: No se pudo crear el archivo de indice" << endl;
+        return false;
+    }
+    fInd << indice.size() << '\n';
+    for (unordered_map<string, InformacionTermino>::const_iterator it = indice.begin(); it != indice.end(); ++it) {
+        fInd << it->first << '\n'; // Termino (en una sola linea por si tiene espacios)
+        fInd << it->second.ftc << " " << it->second.l_docs.size() << '\n';
+        
+        // Iteramos sobre los documentos donde aparece el termino
+        for (unordered_map<int, InfTermDoc>::const_iterator itDocs = it->second.l_docs.begin(); itDocs != it->second.l_docs.end(); ++itDocs) {
+            fInd << itDocs->first << " " << itDocs->second.ft << " " << itDocs->second.posTerm.size() << " ";
+            
+            // Si las posiciones estan guardadas, iteramos la lista
+            if (almacenarPosTerm) {
+                for (list<int>::const_iterator itPos = itDocs->second.posTerm.begin(); itPos != itDocs->second.posTerm.end(); ++itPos) {
+                    fInd << *itPos << " ";
+                }
+            }
+            fInd << '\n';
+        }
+    }
+    fInd.close();
+
+    // 5. GUARDAR ÍNDICE DE LA PREGUNTA (Si hay alguna)
+    string rutaPreg = directorioIndice + "/pregunta.txt";
+    ofstream fPreg(rutaPreg.c_str());
+    if (!fPreg) {
+        cerr << "ERROR: No se pudo crear el archivo de pregunta" << endl;
+        return false;
+    }
+    fPreg << pregunta << '\n';
+    if (!pregunta.empty()) {
+        fPreg << infPregunta.numTotalPal << " " 
+              << infPregunta.numTotalPalSinParada << " " 
+              << infPregunta.numTotalPalDiferentes << '\n';
+        
+        fPreg << indicePregunta.size() << '\n';
+        for (unordered_map<string, InformacionTerminoPregunta>::const_iterator it = indicePregunta.begin(); it != indicePregunta.end(); ++it) {
+            fPreg << it->first << '\n';
+            fPreg << it->second.ft << " " << it->second.posTerm.size() << " ";
+            
+            if (almacenarPosTerm) {
+                for (list<int>::const_iterator itPos = it->second.posTerm.begin(); itPos != it->second.posTerm.end(); ++itPos) {
+                    fPreg << *itPos << " ";
+                }
+            }
+            fPreg << '\n';
+        }
+    }
+    fPreg.close();
+
+    return true;
+}
+
+bool IndexadorHash::RecuperarIndexacion(const string& directorioIndexacion) {
+    // Vaciamos todo el sistema actual para evitar solapamientos
+    VaciarIndiceDocs();
+    VaciarIndicePreg();
+    stopWords.clear();
+    directorioIndice = directorioIndexacion;
+
+    // 1. CARGAR CONFIGURACIÓN
+    string rutaConfig = directorioIndice + "/config.txt";
+    ifstream fConfig(rutaConfig.c_str());
+    if (!fConfig) {
+        cerr << "ERROR: Directorio invalido o faltan archivos" << endl;
+        return false;
+    }
+
+    getline(fConfig, ficheroStopWords);
+    fConfig >> tipoStemmer >> almacenarPosTerm;
+    fConfig.ignore(); // Limpiamos el buffer del enter
+    
+    string delims;
+    getline(fConfig, delims);
+    
+    bool casosEsp, minuscSinAc;
+    fConfig >> casosEsp >> minuscSinAc;
+    fConfig.close();
+
+    // Restauramos objetos base
+    tok = Tokenizador(delims, casosEsp, minuscSinAc);
+    CargarStopWords(ficheroStopWords);
+
+    // 2. CARGAR COLECCIÓN DOCS
+    string rutaColeccion = directorioIndice + "/coleccion.txt";
+    ifstream fCol(rutaColeccion.c_str());
+    if (!fCol) return false;
+    
+    fCol >> informacionColeccionDocs.numDocs 
+         >> informacionColeccionDocs.numTotalPal 
+         >> informacionColeccionDocs.numTotalPalSinParada 
+         >> informacionColeccionDocs.numTotalPalDiferentes 
+         >> informacionColeccionDocs.tamBytes;
+    fCol.close();
+
+    // 3. CARGAR ÍNDICE DE DOCUMENTOS
+    string rutaDocs = directorioIndice + "/indiceDocs.txt";
+    ifstream fDocs(rutaDocs.c_str());
+    if (!fDocs) return false;
+    
+    int numDocumentosGuardados;
+    fDocs >> numDocumentosGuardados;
+    fDocs.ignore();
+    
+    for (int i = 0; i < numDocumentosGuardados; ++i) {
+        string nomDoc;
+        getline(fDocs, nomDoc);
+        
+        InfDoc docInfo;
+        time_t tiempoGuardado; 
+        fDocs >> docInfo.idDoc >> docInfo.numPal >> docInfo.numPalSinParada >> docInfo.numPalDiferentes >> docInfo.tamBytes >> tiempoGuardado;
+        docInfo.fechaModificacion = Fecha(tiempoGuardado);
+        fDocs.ignore();
+        
+        indiceDocs[nomDoc] = docInfo;
+    }
+    fDocs.close();
+
+    // 4. CARGAR ÍNDICE PRINCIPAL
+    string rutaIndice = directorioIndice + "/indice.txt";
+    ifstream fInd(rutaIndice.c_str());
+    if (!fInd) return false;
+    
+    int numTerminos;
+    fInd >> numTerminos;
+    fInd.ignore();
+    
+    for (int i = 0; i < numTerminos; ++i) {
+        string termino;
+        getline(fInd, termino);
+        
+        InformacionTermino infoTerm;
+        int numDocsAsociados;
+        fInd >> infoTerm.ftc >> numDocsAsociados;
+        
+        for (int j = 0; j < numDocsAsociados; ++j) {
+            int idDoc, numPosiciones;
+            InfTermDoc infoTermDoc;
+            
+            fInd >> idDoc >> infoTermDoc.ft >> numPosiciones;
+            
+            if (almacenarPosTerm) {
+                for (int k = 0; k < numPosiciones; ++k) {
+                    int pos;
+                    fInd >> pos;
+                    infoTermDoc.posTerm.push_back(pos);
+                }
+            }
+            infoTerm.l_docs[idDoc] = infoTermDoc;
+        }
+        fInd.ignore(10000, '\n'); //limpiando el enter
+        indice[termino] = infoTerm;
+    }
+    fInd.close();
+
+    // 5. CARGAR ÍNDICE PREGUNTA (Solo si existe)
+    string rutaPreg = directorioIndice + "/pregunta.txt";
+    ifstream fPreg(rutaPreg.c_str());
+    if (fPreg) {
+        getline(fPreg, pregunta);
+        if (!pregunta.empty()) {
+            fPreg >> infPregunta.numTotalPal >> infPregunta.numTotalPalSinParada >> infPregunta.numTotalPalDiferentes;
+            
+            int numTermsPreg;
+            fPreg >> numTermsPreg;
+            fPreg.ignore();
+            
+            for (int i = 0; i < numTermsPreg; ++i) {
+                string terminoPreg;
+                getline(fPreg, terminoPreg);
+                
+                InformacionTerminoPregunta infoTermPreg;
+                int numPosiciones;
+                
+                fPreg >> infoTermPreg.ft >> numPosiciones;
+                if (almacenarPosTerm) {
+                    for (int k = 0; k < numPosiciones; ++k) {
+                        int pos;
+                        fPreg >> pos;
+                        infoTermPreg.posTerm.push_back(pos);
+                    }
+                }
+                fPreg.ignore();
+                indicePregunta[terminoPreg] = infoTermPreg;
+            }
+        }
+        fPreg.close();
+    }
+
+    return true;
 }

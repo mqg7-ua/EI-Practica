@@ -36,10 +36,6 @@ void InfTermDoc::AnadirOcurrencia(int posicion, bool guardarPos) {
     }
 }
 
-int InfTermDoc::ObtenerFt() const {
-    return ft;
-}
-
 ostream& operator<<(ostream& s, const InfTermDoc& p) {
     s << "ft: " << p.ft;
     for (list<int>::const_iterator it = p.posTerm.begin(); it != p.posTerm.end(); ++it) {

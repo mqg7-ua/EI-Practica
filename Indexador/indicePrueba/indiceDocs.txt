@@ -1,0 +1,7 @@
+2
+corpus_corto/fichero2.txt
+2 5 3 2 23
+1776619132
+corpus_corto/fichero1.txt
+1 6 4 3 30
+1776619126
