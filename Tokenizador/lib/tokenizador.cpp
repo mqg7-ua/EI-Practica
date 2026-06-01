@@ -1,5 +1,10 @@
 #include "../include/tokenizador.h"
 
+
+///////////////////////////MEJORAS: HACER UNA TABLA DE BOOLEANOS CON UN AUTOMATA PARA TODOS LOS CASOS ESPECIALES. 
+
+
+
 using namespace std;
 
   //////////////////////////////////////////////////////
