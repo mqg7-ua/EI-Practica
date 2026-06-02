@@ -54,7 +54,7 @@ Buscador& Buscador::operator=(const Buscador& o) {
 }
 
   //////////////////////////////////////////////////////
- //   METODO PRIVADO: SCORING                        //
+ //   METODO AUXILIAR:SCORING                        //
 //////////////////////////////////////////////////////
 
 bool Buscador::ScoreDocumentos(int numPregunta, int numDocumentos) {
