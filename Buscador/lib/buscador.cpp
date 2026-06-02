@@ -64,6 +64,9 @@ bool Buscador::ScoreDocumentos(int numPregunta, int numDocumentos) {
     double avgdl = (double)informacionColeccionDocs.ObtenerNumTotalPalSinParada() / N;
     if (avgdl < 1.0) avgdl = 1.0;
 
+    // Peso normalizado de la query para DFR: qtf / sum_qtf
+    double sumQtf = (double)infPregunta.ObtenerNumTotalPalSinParada();
+
     // Mapa inverso idDoc -> longitud (numPalSinParada) para acceso O(1)
     unordered_map<int, double> docLen;
     docLen.reserve(indiceDocs.size());
@@ -85,29 +88,31 @@ bool Buscador::ScoreDocumentos(int numPregunta, int numDocumentos) {
             if (it == indice.end()) continue;
 
             const InformacionTermino& tInfo = it->second;
-            int df = tInfo.ObtenerFd();
+            int    df = tInfo.ObtenerFd();
+            double ft = (double)tInfo.ObtenerFtc(); // frecuencia total en coleccion
 
             for (const auto& docKv : tInfo.ObtenerDocs()) {
-                lastId   = docKv.first;
-                int tf   = docKv.second.ObtenerFt();
+                lastId  = docKv.first;
+                double tf = (double)docKv.second.ObtenerFt();
 
                 auto dlIt = docLen.find(lastId);
                 double dl = (dlIt != docLen.end()) ? dlIt->second : avgdl;
 
                 double contrib = 0.0;
                 if (formSimilitud == 1) {
-                    // BM25 (Okapi)
-                    double idf    = log((N - df + 0.5) / (df + 0.5));
+                    // BM25 (Okapi) - usa log base 2
+                    double idf    = log2((N - df + 0.5) / (df + 0.5));
                     double tfNorm = tf * (k1 + 1.0) /
                                    (tf + k1 * (1.0 - b + b * dl / avgdl));
                     contrib = idf * tfNorm;
                 } else {
-                    // DFR In_expC2 con normalizacion 2
-                    double idf = log((N + 1.0) / (df + 0.5)) / log(2.0);
-                    double tfn = tf * log(1.0 + c * avgdl / dl) / log(2.0);
-                    contrib    = (tfn > 0.0)
-                                 ? qtf * (tfn / (tfn + 1.0)) * idf
-                                 : 0.0;
+                    // DFR: (log2(1+λ) + tfn·log2((1+λ)/λ)) · (ft+1)/(df·(tfn+1))
+                    // ponderado por qtf/sum_qtf
+                    double lambda = ft / N;
+                    double tfn    = tf * log2(1.0 + c * avgdl / dl);
+                    double wt     = (log2(1.0 + lambda) + tfn * log2((1.0 + lambda) / lambda))
+                                    * (ft + 1.0) / (df * (tfn + 1.0));
+                    contrib = (qtf / sumQtf) * wt;
                 }
                 scores[lastId] += contrib;
             }
@@ -205,9 +210,9 @@ void Buscador::PrintResultsTo(ostream& s, int numDocumentos) const {
 
     string formula = (formSimilitud == 0) ? "DFR" : "BM25";
 
-    // Forzar separador decimal ingles
-    locale localeC("C");
-    s.imbue(localeC);
+    // Forzar separador decimal ingles y 6 decimales fijos (formato exigido)
+    s.imbue(locale("C"));
+    s << fixed << setprecision(6);
 
     for (auto& kv : grupos) {
         auto& docs = kv.second;
@@ -226,12 +231,12 @@ void Buscador::PrintResultsTo(ostream& s, int numDocumentos) const {
                             ? extraerNombreDoc(nomIt->second)
                             : "";
 
-            s << kv.first      << " "
-              << formula       << " "
-              << nomDoc        << " "
-              << pos           << " "
-              << setprecision(15) << docs[pos].vSimilitud << " "
-              << pregImpresa   << "\n";
+            s << kv.first  << " "
+              << formula   << " "
+              << nomDoc    << " "
+              << pos       << " "
+              << docs[pos].vSimilitud << " "
+              << pregImpresa << "\n";
         }
     }
 }

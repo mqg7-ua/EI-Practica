@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -I./include
 LDFLAGS  =
 
 # Fuentes propias + libreria proporcionada
-SRCS = buscador.cpp \
+SRCS = lib/buscador.cpp \
        lib/indexadorHash.cpp \
        lib/indexadorInformacion.cpp \
        lib/tokenizador.cpp \
