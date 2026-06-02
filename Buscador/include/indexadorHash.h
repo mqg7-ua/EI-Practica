@@ -146,8 +146,8 @@ public:
     void ListarDocs()          const;
     bool ListarDocs(const string& nomDoc) const;
 
-private:
-    IndexadorHash(); // prohibido: no se puede crear sin inicializar
+protected:
+    IndexadorHash(); // accesible solo para clases derivadas (Buscador)
 
     // ── Indices ──────────────────────────────────────────────────────────────
     unordered_map<string, InformacionTermino>       indice;
@@ -160,20 +160,21 @@ private:
     InformacionPregunta                             infPregunta;
 
     // ── Configuracion ────────────────────────────────────────────────────────
-    unordered_set<string> stopWords;     // stop-words transformadas (minusc + stem)
+    unordered_set<string> stopWords;
     string                ficheroStopWords;
     Tokenizador           tok;
     string                directorioIndice;
-    int                   tipoStemmer;   // 0=ninguno, 1=Porter-es, 2=Porter-en
+    int                   tipoStemmer;
     bool                  almacenarPosTerm;
 
+private:
     // ── Metodos auxiliares privados ──────────────────────────────────────────
     string AplicarStemmer  (const string& palabra) const;
-    string TransformarTerm (const string& tok_out)  const; // stemmer sobre token ya tokenizado
+    string TransformarTerm (const string& tok_out)  const;
     void   CargarStopWords (const string& fichero);
     bool   IndexarDocumento(const string& nomDoc, int idDoc,
                             long tamBytes, const Fecha& fecha);
-    int    SiguienteIdDoc  () const; // max(idDoc)+1
+    int    SiguienteIdDoc  () const;
 };
 
 #endif // INDEXADORHASH_H
